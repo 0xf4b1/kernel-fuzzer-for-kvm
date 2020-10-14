@@ -46,4 +46,8 @@ uint8_t target_byte;
 
 csh cs_handle;
 
+enum coverage { DYNAMIC, BREAKPOINT };
+enum coverage mode;
+char *bp_file;
+
 #endif

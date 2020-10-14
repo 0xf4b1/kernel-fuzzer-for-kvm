@@ -5,7 +5,8 @@ kvmfuzz_SOURCES = src/main.c src/private.h \
                   src/vmi.c src/vmi.h \
                   src/afl.c src/afl.h \
                   src/tracer.c src/tracer.h \
-                  src/sink.h
+                  src/sink.h \
+                  src/breakpoint.c src/breakpoint.h
 
 kvmfuzz_LDADD   = $(LIBS) \
                   $(VMI_LIBS) \

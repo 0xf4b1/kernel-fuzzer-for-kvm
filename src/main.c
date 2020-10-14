@@ -95,6 +95,7 @@ static void usage(void) {
     printf("\t  --limit <limit FUZZING execution to # of CF instructions>\n");
     printf("\t  --loopmode (Run in a loop without coverage trace, for example using /dev/urandom "
            "as input)\n");
+    printf("\t  --breakpoints <file that contains addresses of CF instructions>\n");
 
     printf("\n\n");
     printf("Optional global inputs:\n");
@@ -118,13 +119,15 @@ int main(int argc, char **argv) {
                                        {"debug", no_argument, NULL, 'v'},
                                        {"logfile", required_argument, NULL, 'F'},
                                        {"loopmode", no_argument, NULL, 'O'},
+                                       {"breakpoints", required_argument, NULL, 'b'},
                                        {NULL, 0, NULL, 0}};
-    const char *opts = "d:j:f:a:m:s:t:l:F:vhO";
+    const char *opts = "d:j:f:a:m:s:t:l:F:b:vhO";
     limit = ~0;
 
     input_path = NULL;
     input_size = 0;
     input_limit = 0;
+    mode = DYNAMIC;
 
     module_start = 0;
     start = 0;
@@ -167,6 +170,10 @@ int main(int argc, char **argv) {
             break;
         case 'O':
             loopmode = true;
+            break;
+        case 'b':
+            mode = BREAKPOINT;
+            bp_file = optarg;
             break;
         case 'h': /* fall-through */
         default:

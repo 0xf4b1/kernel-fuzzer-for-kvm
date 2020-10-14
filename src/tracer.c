@@ -1,3 +1,4 @@
+#include "breakpoint.h"
 #include "private.h"
 #include "sink.h"
 
@@ -28,6 +29,11 @@ static uint8_t cf_backup;
 static addr_t reset_breakpoint;
 
 static vmi_event_t singlestep_event, cc_event;
+
+static struct table *breakpoints;
+static struct node *current_bp;
+
+event_response_t (*handle_event)(vmi_instance_t vmi, vmi_event_t *event);
 
 static void breakpoint_next_cf(vmi_instance_t vmi) {
     if (VMI_SUCCESS == vmi_read_pa(vmi, next_cf_paddr, 1, &cf_backup, NULL) &&
@@ -142,9 +148,15 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         printf("[TRACER %s] 0x%lx. Limit: %lu/%lu\n", traptype[event->type], event->x86_regs->rip,
                tracer_counter, limit);
 
-    if (reset_breakpoint != 0 && VMI_EVENT_SINGLESTEP == event->type) {
-        vmi_write_va(vmi, reset_breakpoint, 0, 1, &cc, NULL);
+    if (reset_breakpoint && VMI_EVENT_SINGLESTEP == event->type) {
+        access_context_t ctx = {.translate_mechanism = VMI_TM_PROCESS_DTB,
+                                .dtb = event->x86_regs->cr3,
+                                .addr = reset_breakpoint};
+
+        vmi_write_8(vmi, &ctx, &cc);
+
         reset_breakpoint = 0;
+
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 
@@ -209,6 +221,10 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
 
     afl_instrument_location(event->x86_regs->rip);
 
+    return handle_event(vmi, event);
+}
+
+event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
     if (VMI_EVENT_SINGLESTEP == event->type) {
         if (next_cf_insn(vmi, event->x86_regs->cr3, event->x86_regs->rip))
             breakpoint_next_cf(vmi);
@@ -233,6 +249,33 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
 
         if (debug)
             printf("Hit the tracer limit: %lu\n", tracer_counter);
+    }
+
+    return 0;
+}
+
+event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event) {
+    if (VMI_EVENT_SINGLESTEP == event->type) {
+        // FIXME
+        if (current_bp != NULL)
+            assert(VMI_SUCCESS == vmi_write_va(vmi, current_bp->address, 0, 1, &cc, NULL));
+
+        return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
+    }
+
+    /*
+     * Let's allow the control-flow instruction to execute
+     * and catch where it continues using MTF singlestep.
+     */
+    if (VMI_EVENT_INTERRUPT == event->type) {
+        event->interrupt_event.reinject = 0;
+
+        current_bp = get(breakpoints, event->x86_regs->rip);
+        assert(current_bp != NULL);
+        assert(VMI_SUCCESS ==
+               vmi_write_va(vmi, current_bp->address, 0, 1, &current_bp->cf_backup, NULL));
+
+        return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 
     return 0;
@@ -284,6 +327,29 @@ bool setup_trace(vmi_instance_t vmi) {
     if (VMI_FAILURE == vmi_register_event(vmi, &cc_event))
         return false;
 
+    if (mode == BREAKPOINT) {
+        handle_event = &handle_event_breakpoints;
+
+        FILE *fp = fopen(bp_file, "r");
+        assert(fp);
+
+        breakpoints = createTable(0x1000);
+
+        char buf[1024];
+        while (fgets(buf, 1024, fp)) {
+            unsigned long address = module_start + strtoul(strtok(buf, "\n"), NULL, 16);
+
+            unsigned char backup;
+            assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
+
+            insert(breakpoints, address, backup);
+        }
+
+        setup_breakpoints(vmi);
+    } else {
+        handle_event = &handle_event_dynamic;
+    }
+
     if (debug)
         printf("Setup trace finished\n");
     return true;
@@ -292,6 +358,9 @@ bool setup_trace(vmi_instance_t vmi) {
 bool start_trace(vmi_instance_t vmi, addr_t address) {
     if (debug)
         printf("Starting trace from 0x%lx.\n", address);
+
+    if (mode == BREAKPOINT)
+        return true;
 
     next_cf_vaddr = 0;
     next_cf_paddr = 0;
@@ -345,4 +414,17 @@ bool clear_interrupts(vmi_instance_t vmi) {
         return false;
 
     return true;
+}
+
+void setup_breakpoints(vmi_instance_t vmi) {
+    int pos;
+    for (pos = 0; pos < breakpoints->size; pos++) {
+
+        struct node *list = breakpoints->list[pos];
+
+        while (list) {
+            assert(VMI_SUCCESS == vmi_write_va(vmi, list->address, 0, 1, &cc, NULL));
+            list = list->next;
+        }
+    }
 }

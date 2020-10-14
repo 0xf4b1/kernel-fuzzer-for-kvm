@@ -12,5 +12,6 @@ bool setup_interrupts(vmi_instance_t vmi);
 bool set_breakpoint(vmi_instance_t vmi);
 bool clear_interrupts(vmi_instance_t vmi);
 bool restore_sinks(vmi_instance_t vmi);
+void setup_breakpoints(vmi_instance_t vmi);
 
 #endif
