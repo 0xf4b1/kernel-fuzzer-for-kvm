@@ -5,7 +5,7 @@
  * List all sink points here. When the kernel executes any of these functions
  * we will report a crash to AFL and stop the fuzzer.
  */
-enum sink_enum { OOPS_BEGIN, PANIC, PAGE_FAULT, __SINK_MAX };
+enum sink_enum { OOPS_BEGIN, PANIC, KASAN_REPORT, __SINK_MAX };
 
 /* Now define what symbol each enum entry corresponds to in the debug json */
 const char *sinks[] = {
@@ -24,14 +24,7 @@ const char *sinks[] = {
      * want AFL to record if its reached.
      */
     [OOPS_BEGIN] = "oops_begin",
-
-    /*
-     * We interpret a page fault as a crash situation since we really shouldn't
-     * encounter any. The VM forks are running without any devices so even if this
-     * is a legitimate page-fault that would page memory back in, it won't be able
-     * to do that since there is no disk.
-     */
-    [PAGE_FAULT] = "page_fault",
+    [KASAN_REPORT] = "kasan_report",
 };
 
 addr_t sink_vaddr[__SINK_MAX] = {
