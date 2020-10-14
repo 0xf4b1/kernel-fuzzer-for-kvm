@@ -161,8 +161,14 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
     }
 
     // reached start address for fuzzing
-    if (event->x86_regs->rip == start) {
+    if (!start || event->x86_regs->rip == start) {
         printf("VM reached the start address\n");
+
+        if (!start) {
+            start = event->x86_regs->rip;
+            start_byte = 0x90;
+            printf("Using first breakpoint for start address: %lx\n", start);
+        }
 
         access_context_t ctx = {.translate_mechanism = VMI_TM_PROCESS_DTB,
                                 .dtb = event->x86_regs->cr3,
@@ -388,7 +394,7 @@ void close_trace(vmi_instance_t vmi) {
 }
 
 bool set_breakpoint(vmi_instance_t vmi) {
-    if (VMI_FAILURE == vmi_write_va(vmi, start, 0, 1, &cc, NULL))
+    if (start && VMI_FAILURE == vmi_write_va(vmi, start, 0, 1, &cc, NULL))
         return false;
 
     loop(vmi);
@@ -397,7 +403,7 @@ bool set_breakpoint(vmi_instance_t vmi) {
 }
 
 bool setup_interrupts(vmi_instance_t vmi) {
-    if (VMI_FAILURE == vmi_read_va(vmi, start, 0, 1, &start_byte, NULL))
+    if (start && VMI_FAILURE == vmi_read_va(vmi, start, 0, 1, &start_byte, NULL))
         return false;
 
     if (VMI_FAILURE == vmi_read_va(vmi, target, 0, 1, &target_byte, NULL))

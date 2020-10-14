@@ -182,12 +182,14 @@ int main(int argc, char **argv) {
         };
     }
 
-    if (!domain || !json || !address || !input_path || !input_limit || !start || !target) {
+    if (!domain || !json || !address || !input_path || !input_limit || !target) {
         usage();
         return -1;
     }
 
-    start = module_start + start;
+    if (start)
+        start = module_start + start;
+
     target = module_start + target;
 
     if (logfile) {
