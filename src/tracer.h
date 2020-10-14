@@ -8,5 +8,9 @@ void clear_sinks(vmi_instance_t vmi);
 bool setup_trace(vmi_instance_t vmi);
 bool start_trace(vmi_instance_t vmi, addr_t address);
 void close_trace(vmi_instance_t vmi);
+bool setup_interrupts(vmi_instance_t vmi);
+bool set_breakpoint(vmi_instance_t vmi);
+bool clear_interrupts(vmi_instance_t vmi);
+bool restore_sinks(vmi_instance_t vmi);
 
 #endif

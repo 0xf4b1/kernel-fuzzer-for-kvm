@@ -1,4 +1,20 @@
-bin_PROGRAMS = kfx forkvm rwmem stepper
+bin_PROGRAMS = kvmfuzz
+
+kvmfuzz_SOURCES = src/main.c src/private.h \
+                  src/signal.c src/signal.h \
+                  src/vmi.c src/vmi.h \
+                  src/afl.c src/afl.h \
+                  src/tracer.c src/tracer.h \
+                  src/sink.h
+
+kvmfuzz_LDADD   = $(LIBS) \
+                  $(VMI_LIBS) \
+                  $(CAPSTONE_LIBS)
+kvmfuzz_CFLAGS  = -Wall -Wextra -fstack-protector \
+                  -Wno-override-init \
+                  $(CFLAGS) \
+                  $(VMI_CFLAGS) \
+                  $(CAPSTONE_CFLAGS)
 
 kfx_SOURCES = src/main.c src/private.h \
               src/signal.c src/signal.h \

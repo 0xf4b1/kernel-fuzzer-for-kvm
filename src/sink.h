@@ -5,12 +5,7 @@
  * List all sink points here. When the kernel executes any of these functions
  * we will report a crash to AFL and stop the fuzzer.
  */
-enum sink_enum {
-    OOPS_BEGIN,
-    PANIC,
-    PAGE_FAULT,
-    __SINK_MAX
-};
+enum sink_enum { OOPS_BEGIN, PANIC, PAGE_FAULT, __SINK_MAX };
 
 /* Now define what symbol each enum entry corresponds to in the debug json */
 const char *sinks[] = {
@@ -39,9 +34,8 @@ const char *sinks[] = {
     [PAGE_FAULT] = "page_fault",
 };
 
-addr_t sink_vaddr[__SINK_MAX] =
-{
-    [0 ... __SINK_MAX-1] = 0,
+addr_t sink_vaddr[__SINK_MAX] = {
+    [0 ... __SINK_MAX - 1] = 0,
 
     /*
      * You can manually define each sink's virtual address here. For example:
@@ -49,9 +43,8 @@ addr_t sink_vaddr[__SINK_MAX] =
      */
 };
 
-addr_t sink_paddr[__SINK_MAX] =
-{
-    [0 ... __SINK_MAX-1] = 0,
+addr_t sink_paddr[__SINK_MAX] = {
+    [0 ... __SINK_MAX - 1] = 0,
 
     /*
      * You can manually define each sink's physical address here. For example:

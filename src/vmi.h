@@ -4,7 +4,7 @@
 #include <libvmi/libvmi.h>
 #include <libvmi/events.h>
 
-bool setup_vmi(vmi_instance_t *vmi, char *domain, uint64_t domid, char *json, bool init_events, bool init_os);
+bool setup_vmi(vmi_instance_t *vmi, char *domain, char *json);
 void loop(vmi_instance_t vmi);
 
 #endif
