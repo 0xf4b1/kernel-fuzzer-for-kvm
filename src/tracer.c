@@ -181,13 +181,18 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         interrupted = 1;
 
         // Set BP for target address
-        assert(VMI_SUCCESS == vmi_write_va(vmi, target, 0, 1, &cc, NULL));
+        if (target)
+            assert(VMI_SUCCESS == vmi_write_va(vmi, target, 0, 1, &cc, NULL));
+        else {
+            reset_breakpoint = start;
+            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
+        }
 
         return 0;
     }
 
     // reached target address for fuzzing
-    if (event->x86_regs->rip == target) {
+    if (target && event->x86_regs->rip == target) {
         printf("VM reached the target address.\n");
 
         access_context_t ctx = {.translate_mechanism = VMI_TM_PROCESS_DTB,

@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
         };
     }
 
-    if (!domain || !json || !address || !input_path || !input_limit || !target) {
+    if (!domain || !json || !address || !input_path || !input_limit) {
         usage();
         return -1;
     }
@@ -190,7 +190,8 @@ int main(int argc, char **argv) {
     if (start)
         start = module_start + start;
 
-    target = module_start + target;
+    if (target)
+        target = module_start + target;
 
     if (logfile) {
         out = open(logfile, O_RDWR | O_CREAT | O_APPEND, 0600);
@@ -246,7 +247,8 @@ int main(int argc, char **argv) {
             }
         }
 
-        set_breakpoint(vmi);
+        if (!target)
+            set_breakpoint(vmi);
     }
 
     close_trace(vmi);
