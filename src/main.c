@@ -96,6 +96,7 @@ static void usage(void) {
     printf("\t  --loopmode (Run in a loop without coverage trace, for example using /dev/urandom "
            "as input)\n");
     printf("\t  --breakpoints <file that contains addresses of CF instructions>\n");
+    printf("\t  --coverage <full|block|edge coverage in breakpoint mode>\n");
 
     printf("\n\n");
     printf("Optional global inputs:\n");
@@ -120,8 +121,9 @@ int main(int argc, char **argv) {
                                        {"logfile", required_argument, NULL, 'F'},
                                        {"loopmode", no_argument, NULL, 'O'},
                                        {"breakpoints", required_argument, NULL, 'b'},
+                                       {"coverage", required_argument, NULL, 'c'},
                                        {NULL, 0, NULL, 0}};
-    const char *opts = "d:j:f:a:m:s:t:l:F:b:vhO";
+    const char *opts = "d:j:f:a:m:s:t:l:F:b:c:vhO";
     limit = ~0;
 
     input_path = NULL;
@@ -172,8 +174,15 @@ int main(int argc, char **argv) {
             loopmode = true;
             break;
         case 'b':
-            mode = BREAKPOINT;
             bp_file = optarg;
+            break;
+        case 'c':
+            if (!strcmp(optarg, "block"))
+                mode = BLOCK;
+            else if (!strcmp(optarg, "edge"))
+                mode = EDGE;
+            else
+                mode = FULL;
             break;
         case 'h': /* fall-through */
         default:

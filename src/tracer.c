@@ -268,7 +268,17 @@ event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
 event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event) {
     if (VMI_EVENT_SINGLESTEP == event->type) {
         // FIXME
-        if (current_bp != NULL)
+        if (current_bp == NULL)
+            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
+
+        if (mode == EDGE) {
+            if (current_bp->taken_addr == event->x86_regs->rip)
+                current_bp->taken = true;
+            else if (current_bp->not_taken_addr == event->x86_regs->rip)
+                current_bp->not_taken = true;
+        }
+
+        if (mode == FULL || (mode == EDGE && !(current_bp->taken && current_bp->not_taken)))
             assert(VMI_SUCCESS == vmi_write_va(vmi, current_bp->address, 0, 1, &cc, NULL));
 
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
@@ -286,7 +296,8 @@ event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event
         assert(VMI_SUCCESS ==
                vmi_write_va(vmi, current_bp->address, 0, 1, &current_bp->cf_backup, NULL));
 
-        return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
+        if (mode != BLOCK)
+            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 
     return 0;
@@ -338,7 +349,7 @@ bool setup_trace(vmi_instance_t vmi) {
     if (VMI_FAILURE == vmi_register_event(vmi, &cc_event))
         return false;
 
-    if (mode == BREAKPOINT) {
+    if (mode != DYNAMIC) {
         handle_event = &handle_event_breakpoints;
 
         FILE *fp = fopen(bp_file, "r");
@@ -348,12 +359,27 @@ bool setup_trace(vmi_instance_t vmi) {
 
         char buf[1024];
         while (fgets(buf, 1024, fp)) {
-            unsigned long address = module_start + strtoul(strtok(buf, "\n"), NULL, 16);
+            char *line = strtok(buf, "\n");
+
+            unsigned long address = module_start + strtoul(strtok(line, ","), NULL, 16);
+            unsigned long taken_addr = module_start + strtoul(strtok(NULL, ","), NULL, 16);
+            unsigned long not_taken_addr = module_start + strtoul(strtok(NULL, ","), NULL, 16);
 
             unsigned char backup;
-            assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
 
-            insert(breakpoints, address, backup);
+            if (mode == BLOCK) {
+                assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
+                insert(breakpoints, address, 0, 0, backup);
+
+                assert(VMI_SUCCESS == vmi_read_va(vmi, taken_addr, 0, 1, &backup, NULL));
+                insert(breakpoints, taken_addr, 0, 0, backup);
+
+                assert(VMI_SUCCESS == vmi_read_va(vmi, not_taken_addr, 0, 1, &backup, NULL));
+                insert(breakpoints, not_taken_addr, 0, 0, backup);
+            } else {
+                assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
+                insert(breakpoints, address, taken_addr, not_taken_addr, backup);
+            }
         }
 
         setup_breakpoints(vmi);
@@ -370,7 +396,7 @@ bool start_trace(vmi_instance_t vmi, addr_t address) {
     if (debug)
         printf("Starting trace from 0x%lx.\n", address);
 
-    if (mode == BREAKPOINT)
+    if (mode != DYNAMIC)
         return true;
 
     next_cf_vaddr = 0;
