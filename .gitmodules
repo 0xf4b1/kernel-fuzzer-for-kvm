@@ -14,3 +14,8 @@
 	path = capstone
 	url = https://github.com/aquynh/capstone
 	ignore = dirty
+[submodule "AFLplusplus"]
+	path = AFLplusplus
+	url = https://github.com/AFLplusplus/AFLplusplus
+	ignore = dirty
+	shallow = true
