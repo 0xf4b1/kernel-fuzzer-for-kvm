@@ -1,6 +1,6 @@
 [submodule "libvmi"]
 	path = libvmi
-	url = https://github.com/libvmi/libvmi
+	url = https://github.com/0xf4b1/libvmi
 	ignore = dirty
 [submodule "dwarf2json"]
 	path = dwarf2json
