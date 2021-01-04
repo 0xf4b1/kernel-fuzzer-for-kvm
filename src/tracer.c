@@ -144,9 +144,13 @@ done:
 }
 
 static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
+
+    if (VMI_SUCCESS != vmi_dtb_to_pid(vmi, event->x86_regs->cr3, &current_pid))
+        printf("Can not get pid!\n");
+
     if (debug)
-        printf("[TRACER %s] 0x%lx. Limit: %lu/%lu\n", traptype[event->type], event->x86_regs->rip,
-               tracer_counter, limit);
+        printf("[TRACER %s] 0x%lx. PID: %u Limit: %lu/%lu\n", traptype[event->type],
+               event->x86_regs->rip, current_pid, tracer_counter, limit);
 
     if (reset_breakpoint && VMI_EVENT_SINGLESTEP == event->type) {
         access_context_t ctx = {.translate_mechanism = VMI_TM_PROCESS_DTB,
@@ -169,6 +173,7 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         printf("VM reached the start address\n");
 
         coverage_enabled = true;
+        harness_pid = current_pid;
 
         if (!start) {
             start = event->x86_regs->rip;
@@ -236,7 +241,7 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         }
     }
 
-    if (coverage_enabled)
+    if (coverage_enabled && current_pid == harness_pid)
         afl_instrument_location(event->x86_regs->rip);
 
     return handle_event(vmi, event);
@@ -274,11 +279,7 @@ event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
 
 event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event) {
     if (VMI_EVENT_SINGLESTEP == event->type) {
-        // FIXME
-        if (current_bp == NULL)
-            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
-
-        if (mode == EDGE) {
+        if (mode == EDGE && current_pid == harness_pid) {
             if (current_bp->taken_addr == event->x86_regs->rip)
                 current_bp->taken = true;
             else if (current_bp->not_taken_addr == event->x86_regs->rip)

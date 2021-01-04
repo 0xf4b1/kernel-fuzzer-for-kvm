@@ -50,5 +50,7 @@ enum coverage { DYNAMIC, FULL, BLOCK, EDGE };
 enum coverage mode;
 char *bp_file;
 bool coverage_enabled;
+vmi_pid_t current_pid;
+vmi_pid_t harness_pid;
 
 #endif
