@@ -160,8 +160,12 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 
-    // reached start address for fuzzing
-    if (!start || event->x86_regs->rip == start) {
+    /*
+     * Reached start address for fuzzing, either the specified start address or the first
+     * encountered breakpoint that is not part of the target.
+     */
+    if (event->x86_regs->rip == start ||
+        (!start && get_address(breakpoints, event->x86_regs->rip) == NULL)) {
         printf("VM reached the start address\n");
 
         if (!start) {
