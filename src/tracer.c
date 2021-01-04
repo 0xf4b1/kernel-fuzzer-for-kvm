@@ -242,7 +242,7 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
     }
 
     if (coverage_enabled && current_pid == harness_pid)
-        afl_instrument_location(event->x86_regs->rip);
+        afl_instrument_location(event->x86_regs->rip - module_start);
 
     return handle_event(vmi, event);
 }
