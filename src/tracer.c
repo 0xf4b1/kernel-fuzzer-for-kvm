@@ -291,7 +291,7 @@ event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event
     if (VMI_EVENT_INTERRUPT == event->type) {
         event->interrupt_event.reinject = 0;
 
-        current_bp = get(breakpoints, event->x86_regs->rip);
+        current_bp = get_address(breakpoints, event->x86_regs->rip);
         assert(current_bp != NULL);
         assert(VMI_SUCCESS ==
                vmi_write_va(vmi, current_bp->address, 0, 1, &current_bp->cf_backup, NULL));
@@ -355,7 +355,7 @@ bool setup_trace(vmi_instance_t vmi) {
         FILE *fp = fopen(bp_file, "r");
         assert(fp);
 
-        breakpoints = createTable(0x1000);
+        breakpoints = create_table(0x1000);
 
         char buf[1024];
         while (fgets(buf, 1024, fp)) {
@@ -369,16 +369,16 @@ bool setup_trace(vmi_instance_t vmi) {
 
             if (mode == BLOCK) {
                 assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
-                insert(breakpoints, address, 0, 0, backup);
+                insert_breakpoint(breakpoints, address, 0, 0, backup);
 
                 assert(VMI_SUCCESS == vmi_read_va(vmi, taken_addr, 0, 1, &backup, NULL));
-                insert(breakpoints, taken_addr, 0, 0, backup);
+                insert_breakpoint(breakpoints, taken_addr, 0, 0, backup);
 
                 assert(VMI_SUCCESS == vmi_read_va(vmi, not_taken_addr, 0, 1, &backup, NULL));
-                insert(breakpoints, not_taken_addr, 0, 0, backup);
+                insert_breakpoint(breakpoints, not_taken_addr, 0, 0, backup);
             } else {
                 assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
-                insert(breakpoints, address, taken_addr, not_taken_addr, backup);
+                insert_breakpoint(breakpoints, address, taken_addr, not_taken_addr, backup);
             }
         }
 
@@ -456,12 +456,10 @@ bool clear_interrupts(vmi_instance_t vmi) {
 void setup_breakpoints(vmi_instance_t vmi) {
     int pos;
     for (pos = 0; pos < breakpoints->size; pos++) {
-
-        struct node *list = breakpoints->list[pos];
-
-        while (list) {
-            assert(VMI_SUCCESS == vmi_write_va(vmi, list->address, 0, 1, &cc, NULL));
-            list = list->next;
+        struct node *node = breakpoints->nodes[pos];
+        while (node) {
+            assert(VMI_SUCCESS == vmi_write_va(vmi, node->address, 0, 1, &cc, NULL));
+            node = node->next;
         }
     }
 }
