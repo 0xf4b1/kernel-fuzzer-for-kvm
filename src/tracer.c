@@ -168,6 +168,8 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         (!start && get_address(breakpoints, event->x86_regs->rip) == NULL)) {
         printf("VM reached the start address\n");
 
+        coverage_enabled = true;
+
         if (!start) {
             start = event->x86_regs->rip;
             start_byte = 0x90;
@@ -234,7 +236,8 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         }
     }
 
-    afl_instrument_location(event->x86_regs->rip);
+    if (coverage_enabled)
+        afl_instrument_location(event->x86_regs->rip);
 
     return handle_event(vmi, event);
 }
@@ -300,7 +303,13 @@ event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event
         assert(VMI_SUCCESS ==
                vmi_write_va(vmi, current_bp->address, 0, 1, &current_bp->cf_backup, NULL));
 
-        if (mode != BLOCK)
+        /*
+         * Switch to single-step for further breakpoint restore only when not in block coverage
+         * mode. Additionally ignore interrupts that occur before harness started. This helps to
+         * discard interrupts that are triggered independently and cause problems, such as interrupt
+         * handlers.
+         */
+        if (mode != BLOCK && coverage_enabled)
             return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 

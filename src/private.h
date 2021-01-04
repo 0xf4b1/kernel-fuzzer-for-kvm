@@ -49,5 +49,6 @@ csh cs_handle;
 enum coverage { DYNAMIC, FULL, BLOCK, EDGE };
 enum coverage mode;
 char *bp_file;
+bool coverage_enabled;
 
 #endif
