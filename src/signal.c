@@ -6,10 +6,7 @@ static struct sigaction act;
 extern int interrupted;
 extern bool loopmode;
 
-static void close_handler(int sig) {
-    interrupted = sig;
-    loopmode = false;
-}
+static void close_handler(int sig) { interrupted = sig; }
 
 void setup_handlers(void) {
     act.sa_handler = close_handler;

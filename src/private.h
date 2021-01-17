@@ -14,12 +14,12 @@
 
 #include <capstone.h>
 
-#include "signal.h"
-#include "vmi.h"
 #include "afl.h"
+#include "signal.h"
 #include "tracer.h"
+#include "vmi.h"
 
-char *domain;
+char *socket;
 char *json;
 FILE *input_file;
 char *input_path;
@@ -29,8 +29,8 @@ unsigned char *input;
 bool afl;
 bool crash;
 bool debug;
-bool loopmode;
 addr_t address;
+addr_t address_pa;
 addr_t start;
 addr_t target;
 addr_t module_start;
@@ -40,7 +40,9 @@ vmi_instance_t vmi;
 os_t os;
 page_mode_t pm;
 int interrupted;
+unsigned long tracer_counter;
 
+uint8_t cc;
 uint8_t start_byte;
 uint8_t target_byte;
 
@@ -50,6 +52,7 @@ enum coverage { DYNAMIC, FULL, BLOCK, EDGE };
 enum coverage mode;
 char *bp_file;
 bool coverage_enabled;
+bool trace_pid;
 vmi_pid_t current_pid;
 vmi_pid_t harness_pid;
 

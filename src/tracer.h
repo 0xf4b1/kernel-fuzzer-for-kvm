@@ -1,17 +1,7 @@
 #ifndef TRACER_H
 #define TRACER_H
 
-#include "private.h"
-
-bool setup_sinks(vmi_instance_t vmi);
-void clear_sinks(vmi_instance_t vmi);
-bool setup_trace(vmi_instance_t vmi);
-bool start_trace(vmi_instance_t vmi, addr_t address);
-void close_trace(vmi_instance_t vmi);
-bool setup_interrupts(vmi_instance_t vmi);
-bool set_breakpoint(vmi_instance_t vmi);
-bool clear_interrupts(vmi_instance_t vmi);
-bool restore_sinks(vmi_instance_t vmi);
-void setup_breakpoints(vmi_instance_t vmi);
+bool init_tracer();
+void teardown();
 
 #endif

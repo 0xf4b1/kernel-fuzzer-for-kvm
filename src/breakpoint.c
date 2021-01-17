@@ -25,7 +25,7 @@ struct node *get_address(struct table *t, unsigned long address) {
 }
 
 void insert_breakpoint(struct table *t, unsigned long address, unsigned long taken_addr,
-            unsigned long not_taken_addr, unsigned char cf_backup) {
+                       unsigned long not_taken_addr, unsigned char cf_backup) {
     int pos = address % t->size;
     struct node *node = t->nodes[pos];
 
