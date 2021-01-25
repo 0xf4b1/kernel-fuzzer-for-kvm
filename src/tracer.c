@@ -323,7 +323,10 @@ void clear_sinks(vmi_instance_t vmi) {
 bool init_tracer(vmi_instance_t vmi) {
     input = malloc(input_limit);
     cc = 0xcc;
-    coverage = fopen("coverage.txt", "w");
+
+    char filename[20];
+    snprintf(filename, 20, "coverage%c.txt", socket[strlen(socket) - 1]);
+    coverage = fopen(filename, "w");
 
     afl_setup();
 
