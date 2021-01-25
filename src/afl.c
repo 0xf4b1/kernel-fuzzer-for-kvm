@@ -26,6 +26,7 @@ void afl_rewind(unsigned long start) {
     prev_loc = (start >> 4) ^ (start << 8);
     prev_loc &= MAP_SIZE - 1;
     prev_loc >>= 1;
+    afl_area_ptr[0] = 1;
 }
 
 void afl_instrument_location(unsigned long cur_loc) {
