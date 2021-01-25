@@ -19,3 +19,6 @@
 	url = https://github.com/AFLplusplus/AFLplusplus
 	ignore = dirty
 	shallow = true
+[submodule "libkvmi"]
+	path = libkvmi
+	url = https://github.com/bitdefender/libkvmi
