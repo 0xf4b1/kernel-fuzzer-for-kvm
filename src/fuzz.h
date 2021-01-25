@@ -4,6 +4,6 @@
 #include "private.h"
 
 bool fuzz(void);
-void stop(void);
+void stop(bool crash);
 
 #endif

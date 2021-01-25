@@ -45,9 +45,7 @@ static bool inject_input() {
 
 bool fuzz() {
     if (fuzz_loop)
-        stop();
-
-    crash = 0;
+        stop(false);
 
     if (debug)
         printf("Starting fuzz loop\n");
@@ -72,7 +70,7 @@ bool fuzz() {
     return true;
 }
 
-void stop(void) {
+void stop(bool crash) {
     if (debug)
         printf("Stopping fuzz loop.\n");
 

@@ -135,7 +135,7 @@ event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
                                 .addr = event->x86_regs->rip};
         vmi_write_8(vmi, &ctx, &target_byte);
 
-        stop();
+        stop(false);
         return 0;
     }
 

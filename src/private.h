@@ -27,7 +27,6 @@ size_t input_size;
 size_t input_limit;
 unsigned char *input;
 bool afl;
-bool crash;
 bool debug;
 addr_t address;
 addr_t address_pa;

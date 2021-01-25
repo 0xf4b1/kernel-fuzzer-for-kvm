@@ -1,6 +1,5 @@
 #include "breakpoint.h"
 #include "fuzz.h"
-#include "private.h"
 #include "sink.h"
 #include "tracer_dynamic.h"
 
@@ -110,11 +109,10 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
     // check for error sink
     for (int c = 0; c < __SINK_MAX; c++) {
         if (sink_vaddr[c] == event->x86_regs->rip) {
-            crash = 1;
+            stop(true);
 
             if (debug)
-                printf("\t Sink %s! Tracer counter: %lu. Crash: %i.\n", sinks[c], tracer_counter,
-                       crash);
+                printf("\t Sink %s! Tracer counter: %lu.\n", sinks[c], tracer_counter);
 
             // Restore instruction byte at sink address
             vmi_write_pa(vmi, sink_paddr[c], 1, &sink_backup[c], NULL);
