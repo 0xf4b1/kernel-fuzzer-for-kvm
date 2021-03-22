@@ -33,6 +33,8 @@ addr_t address_pa;
 addr_t start;
 addr_t target;
 addr_t module_start;
+addr_t start_offset;
+addr_t target_offset;
 unsigned long limit;
 
 vmi_instance_t vmi;
@@ -54,5 +56,9 @@ bool coverage_enabled;
 bool trace_pid;
 vmi_pid_t current_pid;
 vmi_pid_t harness_pid;
+FILE *coverage_fp;
+bool failure;
+bool waiting;
+bool reconnect;
 
 #endif

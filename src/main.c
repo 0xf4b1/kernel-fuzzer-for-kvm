@@ -15,6 +15,7 @@ static void usage(void) {
     printf("\t  --breakpoints <file that contains addresses of CF instructions>\n");
     printf("\t  --coverage <full|block|edge coverage in breakpoint mode>\n");
     printf("\t  --pid\n");
+    printf("\t  --reconnect\n");
     printf("\t  --debug\n");
     printf("\t  --logfile <path to logfile>\n");
 }
@@ -26,7 +27,6 @@ int main(int argc, char **argv) {
                                        {"socket", required_argument, NULL, 'S'},
                                        {"json", required_argument, NULL, 'j'},
                                        {"input", required_argument, NULL, 'f'},
-                                       {"input-limit", required_argument, NULL, 'L'},
                                        {"address", required_argument, NULL, 'a'},
                                        {"module", required_argument, NULL, 'm'},
                                        {"start", required_argument, NULL, 's'},
@@ -37,18 +37,22 @@ int main(int argc, char **argv) {
                                        {"breakpoints", required_argument, NULL, 'b'},
                                        {"coverage", required_argument, NULL, 'c'},
                                        {"pid", no_argument, NULL, 'p'},
+                                       {"reconnect", no_argument, NULL, 'r'},
                                        {NULL, 0, NULL, 0}};
     const char *opts = "S:j:f:a:m:s:t:l:F:b:c:p:vhO";
     limit = ~0;
-
+    cc = 0xcc;
     input_path = NULL;
     input_size = 0;
     input_limit = 0;
     mode = DYNAMIC;
+    reconnect = false;
 
-    module_start = 0;
     start = 0;
     target = 0;
+    module_start = 0;
+    start_offset = 0;
+    target_offset = 0;
 
     while ((c = getopt_long(argc, argv, opts, long_opts, &long_index)) != -1) {
         switch (c) {
@@ -68,16 +72,13 @@ int main(int argc, char **argv) {
             module_start = strtoull(optarg, NULL, 0);
             break;
         case 's':
-            start = strtoull(optarg, NULL, 0);
+            start_offset = strtoull(optarg, NULL, 0);
             break;
         case 't':
-            target = strtoull(optarg, NULL, 0);
+            target_offset = strtoull(optarg, NULL, 0);
             break;
         case 'l':
             limit = strtoull(optarg, NULL, 0);
-            break;
-        case 'L':
-            input_limit = strtoull(optarg, NULL, 0);
             break;
         case 'v':
             debug = true;
@@ -99,6 +100,9 @@ int main(int argc, char **argv) {
         case 'p':
             trace_pid = true;
             break;
+        case 'r':
+            reconnect = true;
+            break;
         case 'h': /* fall-through */
         default:
             usage();
@@ -106,16 +110,10 @@ int main(int argc, char **argv) {
         };
     }
 
-    if (!json || !address || !input_path || !input_limit) {
+    if (!json || !input_path) {
         usage();
         return -1;
     }
-
-    if (start)
-        start = module_start + start;
-
-    if (target)
-        target = module_start + target;
 
     if (logfile) {
         out = open(logfile, O_RDWR | O_CREAT | O_APPEND, 0600);
@@ -125,37 +123,62 @@ int main(int argc, char **argv) {
             return -1;
     }
 
-    if (debug)
-        printf("############ START ################\n");
-
-    setup_handlers();
-
-    if (!setup_vmi(&vmi, socket, json)) {
-        fprintf(stderr, "Unable to start VMI on domain\n");
+    if (cs_open(CS_ARCH_X86, pm == VMI_PM_IA32E ? CS_MODE_64 : CS_MODE_32, &cs_handle)) {
+        fprintf(stderr, "Capstone init failed\n");
         return -1;
     }
 
-    if (cs_open(CS_ARCH_X86, pm == VMI_PM_IA32E ? CS_MODE_64 : CS_MODE_32, &cs_handle)) {
-        fprintf(stderr, "Capstone init failed\n");
-        goto done;
+    char filename[20];
+    snprintf(filename, 20, "coverage%c.txt", socket[strlen(socket) - 1]);
+    coverage_fp = fopen(filename, "w");
+
+    setup_handlers();
+    afl_setup();
+
+    for (;;) {
+        start = module_start + start_offset;
+        target = module_start + target_offset;
+
+        if (debug)
+            printf("############ START ################\n");
+
+        if (!setup_vmi(&vmi, socket, json)) {
+            fprintf(stderr, "Unable to start VMI on domain\n");
+            sleep(10);
+            continue;
+        }
+
+        if (VMI_FAILURE == vmi_pause_vm(vmi)) {
+            printf("Failed to pause vm\n");
+            goto done;
+        }
+
+        if (!init_tracer(vmi)) {
+            fprintf(stderr, "Setup trace failed\n");
+            goto done;
+        }
+
+        if (afl)
+            printf("Running in AFL mode\n");
+        else
+            printf("Running in standalone mode\n");
+
+        loop(vmi);
+
+        if (!reconnect || interrupted)
+            break;
+
+        vmi_destroy(vmi);
+
+        failure = false;
+        waiting = true;
+        while (waiting) {
+            printf("Waiting for signal ...\n");
+            sleep(1);
+        }
+        printf("Got module address: %lx\n", module_start);
     }
 
-    if (VMI_FAILURE == vmi_pause_vm(vmi)) {
-        printf("Failed to pause vm\n");
-        goto done;
-    }
-
-    if (!init_tracer(vmi)) {
-        fprintf(stderr, "Setup trace failed\n");
-        goto done;
-    }
-
-    if (afl)
-        printf("Running in AFL mode\n");
-    else
-        printf("Running in standalone mode\n");
-
-    loop(vmi);
     teardown();
 
 done:

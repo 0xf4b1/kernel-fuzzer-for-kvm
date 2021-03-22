@@ -4,6 +4,7 @@
 
 extern os_t os;
 extern int interrupted;
+extern bool failure;
 extern page_mode_t pm;
 
 bool setup_vmi(vmi_instance_t *vmi, char *socket, char *json) {
@@ -32,7 +33,7 @@ void loop(vmi_instance_t vmi) {
 
     vmi_resume_vm(vmi);
 
-    while (!interrupted) {
+    while (!interrupted && !failure) {
         if (vmi_events_listen(vmi, 500) == VMI_FAILURE) {
             fprintf(stderr, "Error in vmi_events_listen!\n");
             break;
