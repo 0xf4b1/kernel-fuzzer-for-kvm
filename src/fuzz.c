@@ -58,9 +58,6 @@ bool fuzz() {
     if (!get_input())
         return false;
 
-    if (mode == DYNAMIC && !start_trace(vmi, start))
-        return false;
-
     if (!inject_input()) {
         printf("Injecting input failed\n");
         return false;
@@ -71,6 +68,9 @@ bool fuzz() {
 }
 
 void stop(bool crash) {
+    if (!fuzz_loop)
+        return;
+
     if (debug)
         printf("Stopping fuzz loop.\n");
 

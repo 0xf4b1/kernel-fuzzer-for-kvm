@@ -6,6 +6,7 @@ extern csh cs_handle;
 static addr_t next_cf_vaddr;
 static addr_t next_cf_paddr;
 static uint8_t cf_backup;
+static bool reinject = false;
 
 static void breakpoint_next_cf(vmi_instance_t vmi) {
     if (VMI_SUCCESS == vmi_read_pa(vmi, next_cf_paddr, 1, &cf_backup, NULL) &&
@@ -42,6 +43,8 @@ static inline bool is_cf(unsigned int id) {
     case X86_INS_RET:
     case X86_INS_RETF:
     case X86_INS_RETFQ:
+    case X86_INS_SYSCALL:
+    case X86_INS_SYSRET:
         return true;
     default:
         break;
@@ -119,7 +122,10 @@ event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
     afl_instrument_location(event->x86_regs->rip - module_start);
 
     if (VMI_EVENT_SINGLESTEP == event->type) {
-        if (next_cf_insn(vmi, event->x86_regs->cr3, event->x86_regs->rip))
+        if (reinject) {
+            vmi_write_pa(vmi, next_cf_paddr, 1, &cc, NULL);
+            reinject = false;
+        } else if (next_cf_insn(vmi, event->x86_regs->cr3, event->x86_regs->rip))
             breakpoint_next_cf(vmi);
 
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
@@ -144,6 +150,9 @@ event_response_t handle_event_dynamic(vmi_instance_t vmi, vmi_event_t *event) {
      * and catch where it continues using MTF singlestep.
      */
     vmi_write_pa(vmi, next_cf_paddr, 1, &cf_backup, NULL);
+
+    if (trace_pid && current_pid != harness_pid)
+        reinject = true;
 
     if (limit == ~0ul || tracer_counter < limit)
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;

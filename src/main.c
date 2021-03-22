@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
                 mode = BLOCK;
             else if (!strcmp(optarg, "edge"))
                 mode = EDGE;
-            else
+            else if (!strcmp(optarg, "full"))
                 mode = FULL;
             break;
         case 'p':
