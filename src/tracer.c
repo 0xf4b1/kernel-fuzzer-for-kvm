@@ -11,25 +11,27 @@
  * 5. goto step 1
  */
 
+#define HYPERCALL_BUFFER    0x1337133713371338
+#define HYPERCALL_TESTCASE  0x1337133713371337
+
 static const char *traptype[] = {
     [VMI_EVENT_SINGLESTEP] = "singlestep",
     [VMI_EVENT_CPUID] = "cpuid",
     [VMI_EVENT_INTERRUPT] = "int3",
 };
 
-extern int interrupted;
+extern bool failure;
 
 static vmi_event_t singlestep_event, cc_event;
 static struct table *breakpoints;
 static struct node *current_bp;
 static addr_t reset_breakpoint;
-static FILE *coverage;
 
 event_response_t (*handle_event)(vmi_instance_t vmi, vmi_event_t *event);
 
 static void write_coverage(unsigned long address) {
-    fprintf(coverage, "0x%lx\n", address);
-    fflush(coverage);
+    fprintf(coverage_fp, "0x%lx\n", address);
+    fflush(coverage_fp);
 }
 
 static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
@@ -47,24 +49,55 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
                                     .dtb = event->x86_regs->cr3,
                                     .addr = reset_breakpoint};
             vmi_write_8(vmi, &ctx, &cc);
-            return 0;
+            reset_breakpoint = 0;
+            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
         }
         return handle_event(vmi, event);
     }
 
     event->interrupt_event.reinject = 0;
 
-    if (!start && get_address(breakpoints, event->x86_regs->rip) == NULL) {
-        start = event->x86_regs->rip;
-        start_byte = 0x90;
-        printf("Using first breakpoint for start address: %lx\n", start);
+    // check for error sink
+    for (int c = 0; c < __SINK_MAX; c++) {
+        if (sink_vaddr[c] == event->x86_regs->rip) {
+            stop(true);
+
+            if (debug)
+                printf("\t Sink %s! Tracer counter: %lu.\n", sinks[c], tracer_counter);
+
+            // Restore instruction byte at sink address
+            vmi_write_va(vmi, sink_vaddr[c], 0, 1, &sink_backup[c], NULL);
+
+            // Restore BP for sink afterwards
+            reset_breakpoint = sink_vaddr[c];
+            return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
+        }
+    }
+
+    if (event->x86_regs->rax == HYPERCALL_BUFFER) {
+        // Get physical address of buffer for input injection
+        if (VMI_FAILURE == vmi_pagetable_lookup(vmi, event->x86_regs->cr3 & ~(0xfff),
+                                                               event->x86_regs->rbx, &address_pa)) {
+            printf("Failed to find physical address of target buffer!\n");
+            failure = true;
+            return 0;
+        }
+
+        // Get buffer length
+        input_limit = event->x86_regs->rcx;
+        if (input)
+            free(input);
+        input = malloc(input_limit);
+
+        event->x86_regs->rip += 1;
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
 
     /*
      * Reached start address for fuzzing, either the specified start address or the first
      * encountered breakpoint that is not part of the target.
      */
-    if (event->x86_regs->rip == start) {
+    if (event->x86_regs->rax == HYPERCALL_TESTCASE || event->x86_regs->rip == start) {
         if (debug)
             printf("VM reached the start address\n");
 
@@ -72,17 +105,9 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         harness_pid = current_pid;
         tracer_counter = 0;
 
-        // Get physical address of buffer for input injection
-        if (!address_pa && VMI_FAILURE == vmi_pagetable_lookup(vmi, event->x86_regs->cr3 & ~(0xfff),
-                                                               address, &address_pa)) {
-            printf("Failed to find physical address of target buffer!\n");
-            interrupted = true;
-            return 0;
-        }
-
         // Inject fuzz input
-        if (!fuzz()) {
-            interrupted = true;
+        if (!fuzz() || (mode == DYNAMIC && !start_trace(vmi, event->x86_regs->rip))) {
+            failure = true;
             return 0;
         }
 
@@ -91,7 +116,8 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
             assert(VMI_SUCCESS == vmi_write_va(vmi, target, 0, 1, &cc, NULL));
 
         // Breakpoint is compiled into the harness. Just increase RIP.
-        if (start_byte == 0x90) {
+        if (!start_offset) {
+            event->x86_regs->rax = 0;
             event->x86_regs->rip += 1;
             return VMI_EVENT_RESPONSE_SET_REGISTERS;
         }
@@ -104,27 +130,6 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
         vmi_write_8(vmi, &ctx, &start_byte);
         reset_breakpoint = start;
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
-    }
-
-    // check for error sink
-    for (int c = 0; c < __SINK_MAX; c++) {
-        if (sink_vaddr[c] == event->x86_regs->rip) {
-            stop(true);
-
-            if (debug)
-                printf("\t Sink %s! Tracer counter: %lu.\n", sinks[c], tracer_counter);
-
-            // Restore instruction byte at sink address
-            vmi_write_pa(vmi, sink_paddr[c], 1, &sink_backup[c], NULL);
-
-            // Restore BP for sink afterwards
-            reset_breakpoint = sink_vaddr[c];
-
-            if (VMI_EVENT_INTERRUPT == event->type)
-                return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
-
-            return 0;
-        }
     }
 
     if (coverage_enabled && current_pid == harness_pid)
@@ -321,21 +326,13 @@ void clear_sinks(vmi_instance_t vmi) {
 }
 
 bool init_tracer(vmi_instance_t vmi) {
-    input = malloc(input_limit);
-    cc = 0xcc;
-
-    char filename[20];
-    snprintf(filename, 20, "coverage%c.txt", socket[strlen(socket) - 1]);
-    coverage = fopen(filename, "w");
-
-    afl_setup();
+    // Setup crashing sinks
+    if (!setup_sinks(vmi))
+        printf("Setup sinks failed! Crashes will not be reported!\n");
 
     // Setup events and set breakpoints for the target
     if (!setup_trace(vmi))
         return false;
-
-    // Setup crashing sinks
-    setup_sinks(vmi);
 
     return true;
 }
@@ -344,5 +341,5 @@ void teardown() {
     close_trace(vmi);
     clear_sinks(vmi);
     free(input);
-    fclose(coverage);
+    fclose(coverage_fp);
 }
