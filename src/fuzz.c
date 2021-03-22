@@ -21,6 +21,7 @@ static bool get_input(void) {
         return false;
     }
 
+    memset(input, 0, input_limit);
     if (!(input_size = fread(input, 1, input_limit, input_file)))
         return false;
 
@@ -40,7 +41,7 @@ static bool inject_input() {
     if (debug)
         printf("Writing %lu bytes of input to 0x%lx\n", input_size, address_pa);
 
-    return VMI_SUCCESS == vmi_write_pa(vmi, address_pa, input_size, input, NULL);
+    return VMI_SUCCESS == vmi_write_pa(vmi, address_pa, input_limit, input, NULL);
 }
 
 bool fuzz() {
