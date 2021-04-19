@@ -131,6 +131,10 @@ int main(int argc, char **argv) {
     char filename[20];
     snprintf(filename, 20, "coverage%c.txt", socket[strlen(socket) - 1]);
     coverage_fp = fopen(filename, "w");
+    if (!coverage_fp) {
+        fprintf(stderr, "Can not open coverage output\n");
+        return -1;
+    }
 
     setup_handlers();
     afl_setup();
@@ -172,6 +176,7 @@ int main(int argc, char **argv) {
 
         failure = false;
         waiting = true;
+        coverage_enabled = false;
         while (waiting) {
             printf("Waiting for signal ...\n");
             sleep(1);

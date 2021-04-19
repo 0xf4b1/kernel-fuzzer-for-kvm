@@ -77,7 +77,7 @@ static event_response_t tracer_cb(vmi_instance_t vmi, vmi_event_t *event) {
     if (event->x86_regs->rax == HYPERCALL_BUFFER) {
         // Get physical address of buffer for input injection
         if (VMI_FAILURE == vmi_pagetable_lookup(vmi, event->x86_regs->cr3 & ~(0xfff),
-                                                               event->x86_regs->rbx, &address_pa)) {
+                                                event->x86_regs->rbx, &address_pa)) {
             printf("Failed to find physical address of target buffer!\n");
             failure = true;
             return 0;
@@ -143,38 +143,40 @@ event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event
         if (current_pid == harness_pid) {
             if (mode == EDGE) {
                 // EDGE mode, only CF instruction and target chained together
-                afl_instrument_location_edge(current_bp->address - module_start,
+                afl_instrument_location_edge(current_bp->address,
                                              event->x86_regs->rip - module_start);
             } else {
                 // FULL mode, all blocks are chained together
-                afl_instrument_location(current_bp->address - module_start);
+                afl_instrument_location(current_bp->address);
                 afl_instrument_location(event->x86_regs->rip - module_start);
             }
 
-            if (current_bp->taken_addr == event->x86_regs->rip && !current_bp->taken) {
+            if (current_bp->taken_addr + module_start == event->x86_regs->rip &&
+                !current_bp->taken) {
                 current_bp->taken = true;
-                write_coverage(current_bp->address - module_start);
-                write_coverage(current_bp->taken_addr - module_start);
-            } else if (current_bp->not_taken_addr == event->x86_regs->rip &&
+                write_coverage(current_bp->address);
+                write_coverage(current_bp->taken_addr);
+            } else if (current_bp->not_taken_addr + module_start == event->x86_regs->rip &&
                        current_bp->not_taken) {
                 current_bp->not_taken = true;
-                write_coverage(current_bp->address - module_start);
-                write_coverage(current_bp->not_taken_addr - module_start);
+                write_coverage(current_bp->address);
+                write_coverage(current_bp->not_taken_addr);
             }
         }
 
         // Restore breakpoint
         if (mode == FULL || (mode == EDGE && !(current_bp->taken && current_bp->not_taken)))
-            assert(VMI_SUCCESS == vmi_write_va(vmi, current_bp->address, 0, 1, &cc, NULL));
+            assert(VMI_SUCCESS ==
+                   vmi_write_va(vmi, current_bp->address + module_start, 0, 1, &cc, NULL));
 
         return VMI_EVENT_RESPONSE_TOGGLE_SINGLESTEP;
     }
 
     // Restore opcode
-    current_bp = get_address(breakpoints, event->x86_regs->rip);
+    current_bp = get_address(breakpoints, event->x86_regs->rip - module_start);
     assert(current_bp != NULL);
-    assert(VMI_SUCCESS ==
-           vmi_write_va(vmi, current_bp->address, 0, 1, &current_bp->cf_backup, NULL));
+    assert(VMI_SUCCESS == vmi_write_va(vmi, current_bp->address + module_start, 0, 1,
+                                       &current_bp->cf_backup, NULL));
     /*
      * Switch to single-step for further breakpoint restore only when not in block coverage
      * mode. Additionally ignore interrupts that occur before harness started. This helps to
@@ -186,8 +188,9 @@ event_response_t handle_event_breakpoints(vmi_instance_t vmi, vmi_event_t *event
 
     // BLOCK mode, only block is reported
     if (coverage_enabled && current_pid == harness_pid) {
+        current_bp->taken = true;
         afl_instrument_location_block(event->x86_regs->rip - module_start);
-        write_coverage(current_bp->address - module_start);
+        write_coverage(current_bp->address);
     }
 
     return 0;
@@ -209,40 +212,51 @@ bool setup_trace(vmi_instance_t vmi) {
     if (mode != DYNAMIC) {
         handle_event = &handle_event_breakpoints;
 
-        FILE *fp = fopen(bp_file, "r");
-        assert(fp);
+        if (breakpoints == NULL) {
+            FILE *fp = fopen(bp_file, "r");
+            assert(fp);
 
-        breakpoints = create_table(0x1000);
+            breakpoints = create_table(0x1000);
 
-        char buf[1024];
-        while (fgets(buf, 1024, fp)) {
-            char *line = strtok(buf, "\n");
+            char buf[1024];
+            while (fgets(buf, 1024, fp)) {
+                char *line = strtok(buf, "\n");
 
-            unsigned long address = module_start + strtoul(strtok(line, ","), NULL, 16);
-            unsigned long taken_addr = module_start + strtoul(strtok(NULL, ","), NULL, 16);
-            unsigned long not_taken_addr = module_start + strtoul(strtok(NULL, ","), NULL, 16);
+                unsigned long address = strtoul(strtok(line, ","), NULL, 16);
+                unsigned long taken_addr = strtoul(strtok(NULL, ","), NULL, 16);
+                unsigned long not_taken_addr = strtoul(strtok(NULL, ","), NULL, 16);
 
-            unsigned char backup;
+                unsigned char backup;
 
-            if (mode == BLOCK) {
-                assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
-                insert_breakpoint(breakpoints, address, 0, 0, backup);
+                if (mode == BLOCK) {
+                    assert(VMI_SUCCESS ==
+                           vmi_read_va(vmi, address + module_start, 0, 1, &backup, NULL));
+                    insert_breakpoint(breakpoints, address, 0, 0, backup);
 
-                assert(VMI_SUCCESS == vmi_read_va(vmi, taken_addr, 0, 1, &backup, NULL));
-                insert_breakpoint(breakpoints, taken_addr, 0, 0, backup);
+                    assert(VMI_SUCCESS ==
+                           vmi_read_va(vmi, taken_addr + module_start, 0, 1, &backup, NULL));
+                    insert_breakpoint(breakpoints, taken_addr, 0, 0, backup);
 
-                assert(VMI_SUCCESS == vmi_read_va(vmi, not_taken_addr, 0, 1, &backup, NULL));
-                insert_breakpoint(breakpoints, not_taken_addr, 0, 0, backup);
-            } else {
-                assert(VMI_SUCCESS == vmi_read_va(vmi, address, 0, 1, &backup, NULL));
-                insert_breakpoint(breakpoints, address, taken_addr, not_taken_addr, backup);
+                    assert(VMI_SUCCESS ==
+                           vmi_read_va(vmi, not_taken_addr + module_start, 0, 1, &backup, NULL));
+                    insert_breakpoint(breakpoints, not_taken_addr, 0, 0, backup);
+                } else {
+                    assert(VMI_SUCCESS ==
+                           vmi_read_va(vmi, address + module_start, 0, 1, &backup, NULL));
+                    insert_breakpoint(breakpoints, address, taken_addr, not_taken_addr, backup);
+                }
             }
+
+            fclose(fp);
         }
 
         for (int pos = 0; pos < breakpoints->size; pos++) {
             struct node *node = breakpoints->nodes[pos];
             while (node) {
-                assert(VMI_SUCCESS == vmi_write_va(vmi, node->address, 0, 1, &cc, NULL));
+                if (mode == FULL || (mode == EDGE && !(node->taken && node->not_taken)) ||
+                    (mode == BLOCK && !node->taken))
+                    assert(VMI_SUCCESS ==
+                           vmi_write_va(vmi, node->address + module_start, 0, 1, &cc, NULL));
                 node = node->next;
             }
         }
